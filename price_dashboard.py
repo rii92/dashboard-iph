@@ -1,13 +1,35 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-import numpy as np
 from datetime import datetime
 import calendar
+import matplotlib.colors as mcolors
 
 # Set page config
 st.set_page_config(page_title="Kalimantan Barat Price Analysis", layout="wide", initial_sidebar_state="expanded")
+
+# Konfigurasi tema warna yang solid (tanpa opacity)
+solid_colors = {
+    'positive': '#1f77b4',  # Biru solid
+    'negative': '#d62728',  # Merah solid
+    'neutral': '#2ca02c',   # Hijau solid
+    'highlight': '#ff7f0e'  # Oranye solid
+}
+
+# Fungsi untuk membuat warna dengan saturasi berbeda berdasarkan nilai
+def get_color_scale(values, color_base, is_negative=False):
+    normalized = np.abs(values) / np.abs(values).max() if len(values) > 0 and np.abs(values).max() > 0 else np.zeros_like(values)
+    
+    if is_negative:
+        # Untuk nilai negatif, gunakan warna merah dengan saturasi berbeda
+        base_rgb = mcolors.to_rgb(solid_colors['negative'])
+        return [f'rgba({int(base_rgb[0]*255)}, {int(base_rgb[1]*255)}, {int(base_rgb[2]*255)}, {0.3 + 0.7*n})' for n in normalized]
+    else:
+        # Untuk nilai positif, gunakan warna biru dengan saturasi berbeda
+        base_rgb = mcolors.to_rgb(solid_colors['positive'])
+        return [f'rgba({int(base_rgb[0]*255)}, {int(base_rgb[1]*255)}, {int(base_rgb[2]*255)}, {0.3 + 0.7*n})' for n in normalized]
 
 # Load data
 @st.cache_data
@@ -30,9 +52,6 @@ def load_data():
         df['Tanggal'] = pd.to_datetime(dict(year=df['Tahun'], month=df['Bulan'], day=1))
         df['Bulan_Nama'] = df['Tanggal'].dt.strftime('%B')
         
-        # Print column names for debugging
-        print("Available columns:", df.columns.tolist())
-        
         return df
     except Exception as e:
         st.error(f"Error loading data: {e}")
@@ -54,6 +73,10 @@ selected_districts = st.sidebar.multiselect(
     options=all_districts,
     default=all_districts
 )
+
+# Opsi tampilan
+st.sidebar.title("Opsi Tampilan")
+show_values = st.sidebar.checkbox("Tampilkan Nilai pada Grafik", value=True)
 
 # Filter data based on selection
 if selected_districts:
@@ -96,35 +119,154 @@ with col3:
 
 # Price change by region
 st.header("Perubahan Harga per Kabupaten/Kota")
-try:
-    # Try using Plotly with json instead of orjson
-    import json
-    import plotly.io as pio
+
+# Create an interactive bar chart using Plotly
+if not filtered_df.empty and not filtered_df['Indikator Perubahan Harga (%)'].isna().all():
+    # Sort data for better visualization
+    sorted_df = filtered_df.sort_values('Indikator Perubahan Harga (%)', ascending=False)
     
-    # Override the default JSON encoder to avoid orjson
-    pio.json.config.default_engine = 'json'
-    pio.json.config.default_encoder = json.dumps
+    # Create color array based on values with saturation
+    positive_values = sorted_df['Indikator Perubahan Harga (%)'] >= 0
+    negative_values = sorted_df['Indikator Perubahan Harga (%)'] < 0
     
-    fig = px.bar(filtered_df, x='Kab/Kota', y='Indikator Perubahan Harga (%)', 
-                color='Indikator Perubahan Harga (%)',
-                color_continuous_scale=px.colors.diverging.RdBu_r,
-                labels={'Indikator Perubahan Harga (%)': 'Perubahan Harga (%)'})
-    fig.update_layout(xaxis_title="Kabupaten/Kota", yaxis_title="Perubahan Harga (%)")
+    positive_colors = get_color_scale(sorted_df.loc[positive_values, 'Indikator Perubahan Harga (%)'], solid_colors['positive'])
+    negative_colors = get_color_scale(sorted_df.loc[negative_values, 'Indikator Perubahan Harga (%)'], solid_colors['negative'], is_negative=True)
+    
+    # Combine colors
+    colors = []
+    pos_idx = 0
+    neg_idx = 0
+    for val in sorted_df['Indikator Perubahan Harga (%)']:
+        if val >= 0:
+            colors.append(positive_colors[pos_idx] if pos_idx < len(positive_colors) else solid_colors['positive'])
+            pos_idx += 1
+        else:
+            colors.append(negative_colors[neg_idx] if neg_idx < len(negative_colors) else solid_colors['negative'])
+            neg_idx += 1
+    
+    # Create interactive bar chart with Plotly
+    fig = go.Figure()
+    
+    # Add bars
+    fig.add_trace(go.Bar(
+        x=sorted_df['Kab/Kota'],
+        y=sorted_df['Indikator Perubahan Harga (%)'],
+        marker_color=colors,
+        text=[f"{x:.2f}%" for x in sorted_df['Indikator Perubahan Harga (%)']] if show_values else None,
+        textposition='outside',
+        hovertemplate='<b>%{x}</b><br>Perubahan: %{y:.2f}%<br>Bulan: %{customdata[0]}<br>Tahun: %{customdata[1]}<extra></extra>',
+        customdata=sorted_df[['Bulan_Nama', 'Tahun']]
+    ))
+    
+    # Update layout
+    fig.update_layout(
+        title={
+            'text': 'Perubahan Harga per Kabupaten/Kota',
+            'font': {'size': 24, 'color': 'black', 'family': 'Arial, sans-serif'}
+        },
+        xaxis_title={
+            'text': 'Kabupaten/Kota',
+            'font': {'size': 16, 'color': 'black', 'family': 'Arial, sans-serif'}
+        },
+        yaxis_title={
+            'text': 'Perubahan Harga (%)',
+            'font': {'size': 16, 'color': 'black', 'family': 'Arial, sans-serif'}
+        },
+        xaxis={'categoryorder': 'total descending', 'tickangle': -45},
+        plot_bgcolor='white',
+        height=600,
+        margin=dict(t=100, b=100, l=70, r=40),
+        hoverlabel=dict(bgcolor="white", font_size=14, font_family="Arial, sans-serif"),
+        uniformtext_minsize=10,
+        uniformtext_mode='hide'
+    )
+    
+    # Adjust y-axis range to accommodate text labels
+    max_val = sorted_df['Indikator Perubahan Harga (%)'].max()
+    min_val = sorted_df['Indikator Perubahan Harga (%)'].min()
+    padding = (max_val - min_val) * 0.15  # Add 15% padding
+    
+    fig.update_yaxes(
+        showgrid=True,
+        gridwidth=1,
+        gridcolor='lightgray',
+        range=[min_val - padding if min_val < 0 else min_val * 0.9, max_val * 1.15]
+    )
+    
+    # Display the chart
     st.plotly_chart(fig, use_container_width=True)
-except Exception as e:
-    st.error(f"Error creating chart: {e}")
-    st.info("Menggunakan chart alternatif karena masalah dengan Plotly.")
-    
-    # Fallback to simple bar chart using Streamlit
-    st.bar_chart(filtered_df.set_index('Kab/Kota')['Indikator Perubahan Harga (%)'])
+else:
+    st.warning("Tidak ada data yang cukup untuk visualisasi perubahan harga.")
 
 # Price disparity analysis
 st.header("Disparitas Harga Antar Daerah")
-fig2 = px.bar(filtered_df, x='Kab/Kota', y='Disparitas Harga Antar Daerah',
-              color='Disparitas Harga Antar Daerah',
-              labels={'Disparitas Harga Antar Daerah': 'Disparitas Harga'})
-fig2.update_layout(xaxis_title="Kabupaten/Kota", yaxis_title="Disparitas Harga")
-st.plotly_chart(fig2, use_container_width=True)
+
+# Create a more attractive bar chart for price disparity using Plotly
+if not filtered_df.empty and not filtered_df['Disparitas Harga Antar Daerah'].isna().all():
+    # Filter out NaN values
+    disparity_df = filtered_df.dropna(subset=['Disparitas Harga Antar Daerah'])
+    
+    if not disparity_df.empty:
+        # Sort data for better visualization
+        sorted_disparity_df = disparity_df.sort_values('Disparitas Harga Antar Daerah', ascending=False)
+        
+        # Create color array with saturation
+        colors = get_color_scale(sorted_disparity_df['Disparitas Harga Antar Daerah'], solid_colors['highlight'])
+        
+        # Create interactive bar chart with Plotly
+        fig = go.Figure()
+        
+        # Add bars
+        fig.add_trace(go.Bar(
+            x=sorted_disparity_df['Kab/Kota'],
+            y=sorted_disparity_df['Disparitas Harga Antar Daerah'],
+            marker_color=colors,
+            text=[f"{x:.2f}" for x in sorted_disparity_df['Disparitas Harga Antar Daerah']] if show_values else None,
+            textposition='outside',
+            hovertemplate='<b>%{x}</b><br>Disparitas: %{y:.2f}<br>Bulan: %{customdata[0]}<br>Tahun: %{customdata[1]}<extra></extra>',
+            customdata=sorted_disparity_df[['Bulan_Nama', 'Tahun']]
+        ))
+        
+        # Update layout
+        fig.update_layout(
+            title={
+                'text': 'Disparitas Harga Antar Daerah',
+                'font': {'size': 24, 'color': 'black', 'family': 'Arial, sans-serif'}
+            },
+            xaxis_title={
+                'text': 'Kabupaten/Kota',
+                'font': {'size': 16, 'color': 'black', 'family': 'Arial, sans-serif'}
+            },
+            yaxis_title={
+                'text': 'Disparitas Harga (%)',
+                'font': {'size': 16, 'color': 'black', 'family': 'Arial, sans-serif'}
+            },
+            xaxis={'categoryorder': 'total descending', 'tickangle': -45},
+            plot_bgcolor='white',
+            height=600,
+            margin=dict(t=100, b=100, l=70, r=40),
+            hoverlabel=dict(bgcolor="white", font_size=14, font_family="Arial, sans-serif"),
+            uniformtext_minsize=10,
+            uniformtext_mode='hide'
+        )
+        
+        # Adjust y-axis range to accommodate text labels
+        max_val = sorted_disparity_df['Disparitas Harga Antar Daerah'].max()
+        padding = max_val * 0.15  # Add 15% padding
+        
+        fig.update_yaxes(
+            showgrid=True,
+            gridwidth=1,
+            gridcolor='lightgray',
+            range=[0, max_val * 1.15]
+        )
+        
+        # Display the chart
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.warning("Tidak ada data disparitas harga yang tersedia.")
+else:
+    st.warning("Tidak ada data yang cukup untuk visualisasi disparitas harga.")
 
 # Commodity contribution analysis
 st.header("Analisis Komoditas Utama")
@@ -172,204 +314,281 @@ else:
             commodity_data.append({
                 'Kab/Kota': row['Kab/Kota'],
                 'Kontribusi': value,
-                'Indikator Perubahan Harga (%)': row['Indikator Perubahan Harga (%)']
+                'Indikator Perubahan Harga (%)': row['Indikator Perubahan Harga (%)'],
+                'Bulan_Nama': row['Bulan_Nama'],
+                'Tahun': row['Tahun']
             })
 
         commodity_df = pd.DataFrame(commodity_data)
-        fig3 = px.bar(commodity_df, x='Kab/Kota', y='Kontribusi',
-                    title=f"Kontribusi {selected_commodity} terhadap Perubahan Harga",
-                    color='Indikator Perubahan Harga (%)',
-                    color_continuous_scale=px.colors.diverging.RdBu_r)
-        st.plotly_chart(fig3, use_container_width=True)
+        
+        # Create a more attractive visualization for commodity contribution using Plotly
+        if not commodity_df.empty and not commodity_df['Kontribusi'].isna().all() and not (commodity_df['Kontribusi'] == 0).all():
+            # Sort data for better visualization
+            sorted_commodity_df = commodity_df.sort_values('Kontribusi', ascending=False)
+            
+            # Create color array based on values with saturation
+            positive_values = sorted_commodity_df['Kontribusi'] >= 0
+            negative_values = sorted_commodity_df['Kontribusi'] < 0
+            
+            positive_colors = get_color_scale(sorted_commodity_df.loc[positive_values, 'Kontribusi'], solid_colors['positive'])
+            negative_colors = get_color_scale(sorted_commodity_df.loc[negative_values, 'Kontribusi'], solid_colors['negative'], is_negative=True)
+            
+            # Combine colors
+            colors = []
+            pos_idx = 0
+            neg_idx = 0
+            for val in sorted_commodity_df['Kontribusi']:
+                if val >= 0:
+                    colors.append(positive_colors[pos_idx] if pos_idx < len(positive_colors) else solid_colors['positive'])
+                    pos_idx += 1
+                else:
+                    colors.append(negative_colors[neg_idx] if neg_idx < len(negative_colors) else solid_colors['negative'])
+                    neg_idx += 1
+            
+            # Create interactive bar chart with Plotly
+            fig = go.Figure()
+            
+            # Add bars
+            fig.add_trace(go.Bar(
+                x=sorted_commodity_df['Kab/Kota'],
+                y=sorted_commodity_df['Kontribusi'],
+                marker_color=colors,
+                text=[f"{x:.2f}" for x in sorted_commodity_df['Kontribusi']] if show_values else None,
+                textposition='outside',
+                hovertemplate='<b>%{x}</b><br>Kontribusi: %{y:.2f}<br>Perubahan Harga: %{customdata[0]:.2f}%<br>Bulan: %{customdata[1]}<br>Tahun: %{customdata[2]}<extra></extra>',
+                customdata=sorted_commodity_df[['Indikator Perubahan Harga (%)', 'Bulan_Nama', 'Tahun']]
+            ))
+            
+            # Update layout
+            fig.update_layout(
+                title={
+                    'text': f'Kontribusi {selected_commodity} terhadap Perubahan Harga',
+                    'font': {'size': 24, 'color': 'black', 'family': 'Arial, sans-serif'}
+                },
+                xaxis_title={
+                    'text': 'Kabupaten/Kota',
+                    'font': {'size': 16, 'color': 'black', 'family': 'Arial, sans-serif'}
+                },
+                yaxis_title={
+                    'text': 'Kontribusi',
+                    'font': {'size': 16, 'color': 'black', 'family': 'Arial, sans-serif'}
+                },
+                xaxis={'categoryorder': 'total descending', 'tickangle': -45},
+                plot_bgcolor='white',
+                height=600,
+                margin=dict(t=100, b=100, l=70, r=40),
+                hoverlabel=dict(bgcolor="white", font_size=14, font_family="Arial, sans-serif"),
+                uniformtext_minsize=10,
+                uniformtext_mode='hide'
+            )
+            
+            # Adjust y-axis range to accommodate text labels
+            max_val = sorted_commodity_df['Kontribusi'].max()
+            min_val = sorted_commodity_df['Kontribusi'].min()
+            padding = (max_val - min_val) * 0.15  # Add 15% padding
+            
+            fig.update_yaxes(
+                showgrid=True,
+                gridwidth=1,
+                gridcolor='lightgray',
+                range=[min_val - padding if min_val < 0 else min_val * 0.9, max_val * 1.15]
+            )
+            
+            # Display the chart
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.warning(f"Tidak ada data kontribusi yang tersedia untuk {selected_commodity}.")
     else:
         st.warning("Tidak ada data komoditas yang tersedia.")
 
-# Time Series Analysis for Price Trends
-st.header("Analisis Trend Harga")
+# Time series analysis
+st.header("Analisis Tren Perubahan Harga")
 
-# Since we only have one time point in the sample data, let's create a note about this
-if len(filtered_df['Tanggal'].unique()) <= 1:
-    st.info("Data saat ini hanya tersedia untuk satu periode waktu (Minggu ke-4 Oktober 2022). Visualisasi trend akan tersedia ketika data dari beberapa periode waktu telah ditambahkan.")
+# Pilihan tampilan tren
+trend_view = st.radio(
+    "Tampilkan tren untuk:",
+    ["Kalimantan Barat (Agregat)", "Per Kabupaten/Kota"],
+    horizontal=True
+)
+
+# Group by date and calculate average price change
+if not filtered_df.empty:
+    # Check if we have enough time periods for analysis
+    time_periods = filtered_df['Tanggal'].nunique()
     
-    # Add a sample visualization with simulated data for demonstration
-    st.subheader("Contoh Visualisasi Trend (Data Simulasi)")
-    
-    # Create sample data for demonstration - ensure we have districts to work with
-    if selected_districts:
-        sample_dates = pd.date_range(start='2022-07-01', end='2022-10-31', freq='W-MON')
-        sample_districts = selected_districts[:3] if len(selected_districts) > 3 else selected_districts
-        
-        sample_data = []
-        for district in sample_districts:
-            base_value = np.random.uniform(0, 5)  # Random starting point
-            trend = np.random.choice([-0.1, 0, 0.1])  # Random trend direction
-            volatility = np.random.uniform(0.2, 1.5)  # Random volatility
+    if time_periods > 1:
+        if trend_view == "Kalimantan Barat (Agregat)":
+            # Group by date and calculate average for all districts
+            time_series_df = filtered_df.groupby('Tanggal')['Indikator Perubahan Harga (%)'].mean().reset_index()
+            time_series_df['Bulan-Tahun'] = time_series_df['Tanggal'].dt.strftime('%b %Y')
             
-            for date in sample_dates:
-                value = base_value + trend * (date.dayofyear - sample_dates[0].dayofyear)/7
-                value += np.random.normal(0, volatility)  # Add some noise
-                sample_data.append({
-                    'Tanggal': date,
-                    'Kab/Kota': district,
-                    'Indikator Perubahan Harga (%)': value
-                })
-        
-        # Only create and display the plot if we have data
-        if sample_data:
-            sample_df = pd.DataFrame(sample_data)
+            # Create interactive line chart with Plotly
+            fig = go.Figure()
             
-            # Create time series plot
-            fig_trend = px.line(sample_df, x='Tanggal', y='Indikator Perubahan Harga (%)', 
-                                color='Kab/Kota', markers=True,
-                                title="Simulasi Trend Perubahan Harga per Kabupaten/Kota")
-            fig_trend.update_layout(
-                xaxis_title="Periode Waktu",
-                yaxis_title="Perubahan Harga (%)",
-                legend_title="Kabupaten/Kota"
+            # Add line and markers
+            fig.add_trace(go.Scatter(
+                x=time_series_df['Tanggal'],
+                y=time_series_df['Indikator Perubahan Harga (%)'],
+                mode='lines+markers' + ('+text' if show_values else ''),
+                name='Perubahan Harga',
+                line=dict(color=solid_colors['positive'], width=4),
+                marker=dict(size=12, color=solid_colors['positive']),
+                text=[f"{y:.2f}%" for y in time_series_df['Indikator Perubahan Harga (%)']] if show_values else None,
+                textposition="top center",
+                textfont=dict(size=12, color='black'),
+                hovertemplate='<b>%{customdata}</b><br>Perubahan: %{y:.2f}%<extra></extra>',
+                customdata=time_series_df['Bulan-Tahun']
+            ))
+            
+            # Add horizontal line at y=0
+            fig.add_shape(
+                type="line",
+                x0=time_series_df['Tanggal'].min(),
+                y0=0,
+                x1=time_series_df['Tanggal'].max(),
+                y1=0,
+                line=dict(color="gray", width=2, dash="dash")
             )
-            st.plotly_chart(fig_trend, use_container_width=True)
             
-            st.caption("Catatan: Visualisasi di atas menggunakan data simulasi untuk tujuan demonstrasi.")
-        else:
-            st.warning("Pilih setidaknya satu kabupaten/kota untuk melihat visualisasi trend.")
+            # Update layout
+            fig.update_layout(
+                title={
+                    'text': 'Tren Perubahan Harga Kalimantan Barat',
+                    'font': {'size': 24, 'color': 'black', 'family': 'Arial, sans-serif'}
+                },
+                xaxis_title={
+                    'text': 'Periode',
+                    'font': {'size': 16, 'color': 'black', 'family': 'Arial, sans-serif'}
+                },
+                yaxis_title={
+                    'text': 'Rata-rata Perubahan Harga (%)',
+                    'font': {'size': 16, 'color': 'black', 'family': 'Arial, sans-serif'}
+                },
+                xaxis=dict(
+                    tickformat='%b %Y',
+                    tickangle=-45
+                ),
+                plot_bgcolor='white',
+                height=600,
+                margin=dict(t=100, b=100, l=70, r=40),
+                hoverlabel=dict(bgcolor="white", font_size=14, font_family="Arial, sans-serif")
+            )
+            
+            # Add grid lines
+            fig.update_yaxes(
+                showgrid=True,
+                gridwidth=1,
+                gridcolor='lightgray'
+            )
+            
+            # Display the chart
+            st.plotly_chart(fig, use_container_width=True)
+            
+        else:  # Per Kabupaten/Kota
+            # Pilih kabupaten/kota untuk ditampilkan (maksimal 5)
+            if len(selected_districts) > 5:
+                st.warning("Menampilkan terlalu banyak kabupaten/kota dapat membuat grafik sulit dibaca. Silakan pilih maksimal 5 kabupaten/kota.")
+                districts_for_trend = st.multiselect(
+                    "Pilih maksimal 5 kabupaten/kota untuk ditampilkan:",
+                    options=selected_districts,
+                    default=selected_districts[:5] if len(selected_districts) > 5 else selected_districts
+                )
+            else:
+                districts_for_trend = selected_districts
+            
+            if districts_for_trend:
+                # Filter data for selected districts
+                trend_df = filtered_df[filtered_df['Kab/Kota'].isin(districts_for_trend)]
+                
+                # Create interactive line chart with Plotly
+                fig = go.Figure()
+                
+                # Color palette for multiple lines
+                colors = px.colors.qualitative.Plotly
+                
+                # Add lines for each district
+                for i, district in enumerate(districts_for_trend):
+                    district_df = trend_df[trend_df['Kab/Kota'] == district]
+                    
+                    # Sort by date
+                    district_df = district_df.sort_values('Tanggal')
+                    
+                    # Skip if less than 2 data points
+                    if len(district_df) < 2:
+                        continue
+                    
+                    # Add line and markers
+                    fig.add_trace(go.Scatter(
+                        x=district_df['Tanggal'],
+                        y=district_df['Indikator Perubahan Harga (%)'],
+                        mode='lines+markers' + ('+text' if show_values else ''),
+                        name=district,
+                        line=dict(color=colors[i % len(colors)], width=3),
+                        marker=dict(size=10, color=colors[i % len(colors)]),
+                        text=[f"{y:.2f}%" for y in district_df['Indikator Perubahan Harga (%)']] if show_values else None,
+                        textposition="top center",
+                        textfont=dict(size=10, color=colors[i % len(colors)]),
+                        hovertemplate='<b>%{text}</b><br>Perubahan: %{y:.2f}%<br>%{customdata}<extra></extra>',
+                        customdata=district_df['Bulan_Nama'] + ' ' + district_df['Tahun'].astype(str),
+                        hovertext=[district] * len(district_df)  # District name for hover
+                    ))
+                
+                # Add horizontal line at y=0
+                fig.add_shape(
+                    type="line",
+                    x0=filtered_df['Tanggal'].min(),
+                    y0=0,
+                    x1=filtered_df['Tanggal'].max(),
+                    y1=0,
+                    line=dict(color="gray", width=2, dash="dash")
+                )
+                
+                # Update layout
+                fig.update_layout(
+                    title={
+                        'text': 'Tren Perubahan Harga per Kabupaten/Kota',
+                        'font': {'size': 24, 'color': 'black', 'family': 'Arial, sans-serif'}
+                    },
+                    xaxis_title={
+                        'text': 'Periode',
+                        'font': {'size': 16, 'color': 'black', 'family': 'Arial, sans-serif'}
+                    },
+                    yaxis_title={
+                        'text': 'Perubahan Harga (%)',
+                        'font': {'size': 16, 'color': 'black', 'family': 'Arial, sans-serif'}
+                    },
+                    xaxis=dict(
+                        tickformat='%b %Y',
+                        tickangle=-45
+                    ),
+                    plot_bgcolor='white',
+                    height=600,
+                    margin=dict(t=100, b=100, l=70, r=40),
+                    hoverlabel=dict(bgcolor="white", font_size=14, font_family="Arial, sans-serif"),
+                    legend=dict(
+                        orientation="h",
+                        yanchor="bottom",
+                        y=1.02,
+                        xanchor="right",
+                        x=1
+                    )
+                )
+                
+                # Add grid lines
+                fig.update_yaxes(
+                    showgrid=True,
+                    gridwidth=1,
+                    gridcolor='lightgray'
+                )
+                
+                # Display the chart
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.warning("Silakan pilih minimal satu kabupaten/kota untuk melihat tren.")
     else:
-        st.warning("Pilih setidaknya satu kabupaten/kota untuk melihat visualisasi trend.")
-    
+        st.info("Diperlukan lebih dari satu periode waktu untuk analisis tren.")
 else:
-    # If we have multiple time points, create actual time series visualization
-    fig_trend = px.line(filtered_df, x='Tanggal', y='Indikator Perubahan Harga (%)', 
-                       color='Kab/Kota', markers=True,
-                       title="Trend Perubahan Harga per Kabupaten/Kota")
-    fig_trend.update_layout(
-        xaxis_title="Periode Waktu",
-        yaxis_title="Perubahan Harga (%)",
-        legend_title="Kabupaten/Kota"
-    )
-    st.plotly_chart(fig_trend, use_container_width=True)
-    
-    # Add trend analysis
-    if len(selected_districts) == 1:
-        district = selected_districts[0]
-        district_data = filtered_df[filtered_df['Kab/Kota'] == district]
-        
-        if len(district_data) > 1:
-            # Calculate trend
-            x = np.array((district_data['Tanggal'] - district_data['Tanggal'].min()).dt.days)
-            y = district_data['Indikator Perubahan Harga (%)'].values
-            slope, intercept = np.polyfit(x, y, 1)
-            
-            trend_direction = "naik" if slope > 0 else "turun"
-            st.markdown(f"**Analisis Trend untuk {district}:**")
-            st.markdown(f"- Trend perubahan harga cenderung **{trend_direction}** selama periode yang ditampilkan.")
-            st.markdown(f"- Rata-rata perubahan: **{district_data['Indikator Perubahan Harga (%)'].mean():.2f}%**")
-            st.markdown(f"- Volatilitas (standar deviasi): **{district_data['Indikator Perubahan Harga (%)'].std():.2f}**")
-
-# Advanced Analysis Section
-st.header("Analisis Mendalam")
-
-# If only one district is selected, show detailed analysis
-if len(selected_districts) == 1:
-    district = selected_districts[0]
-    district_data = filtered_df[filtered_df['Kab/Kota'] == district]
-    
-    st.subheader(f"Analisis Data Harga Komoditas di Kabupaten {district}")
-    
-    # Inflation/Deflation Analysis
-    inflation_status = "inflasi" if district_data['Indikator Perubahan Harga (%)'].iloc[0] > 0 else "deflasi"
-    inflation_value = abs(district_data['Indikator Perubahan Harga (%)'].iloc[0])
-    
-    st.markdown(f"""
-    ### Analisis Umum
-    
-    #### Tren Inflasi dan Deflasi:
-    - {district} mengalami **{inflation_status}** sebesar **{inflation_value:.2f}%** pada periode ini.
-    """)
-    
-    # Commodity Analysis
-    st.markdown("#### Komoditas Penggerak Utama:")
-    
-    # Extract top 3 commodities
-    commodity_list = district_data['Komoditas Andil Perubahan Harga'].iloc[0].split(';')
-    top_commodities = []
-    
-    for commodity in commodity_list:
-        if '(' in commodity:
-            name = commodity.split('(')[0].strip()
-            value = float(commodity.split('(')[1].split(')')[0])
-            top_commodities.append((name, value))
-    
-    top_commodities.sort(key=lambda x: abs(x[1]), reverse=True)
-    
-    for i, (name, value) in enumerate(top_commodities[:3], 1):
-        st.markdown(f"- **{name}**: Andil {value:.4f}% ({i})")
-    
-    # Price Fluctuation Analysis
-    st.markdown("#### Fluktuasi Harga Tertinggi:")
-    highest_fluctuation = district_data['Fluktuasi Harga Tertinggi'].iloc[0]
-    fluctuation_value = district_data['Nilai'].iloc[0]
-    
-    if highest_fluctuation == "STABIL":
-        st.markdown(f"- Harga komoditas di {district} relatif **stabil** pada periode ini.")
-    else:
-        st.markdown(f"- **{highest_fluctuation}** mengalami fluktuasi tertinggi dengan nilai **{fluctuation_value:.3f}**.")
-    
-    # Price Disparity Analysis
-    st.markdown("#### Disparitas Harga Antar Daerah:")
-    disparity_value = district_data['Disparitas Harga Antar Daerah'].iloc[0]
-    st.markdown(f"- Disparitas harga di {district} mencapai **{disparity_value:.2f}%**, menunjukkan perbedaan harga yang {'signifikan' if disparity_value > 110 else 'moderat'} dibandingkan daerah lain.")
-    
-    # Recommendations
-    st.markdown("""
-    ### Rekomendasi untuk BPS dan Pemda
-    
-    #### Untuk BPS:
-    - Lakukan pemantauan lebih intensif terhadap komoditas dengan andil perubahan harga tertinggi
-    - Tingkatkan kualitas data dengan pengumpulan yang lebih konsisten
-    - Kembangkan indikator dini untuk komoditas dengan fluktuasi tinggi
-    
-    #### Untuk Pemda:
-    - Fokus pada stabilisasi harga komoditas penggerak utama inflasi/deflasi
-    - Pertimbangkan intervensi pasar untuk komoditas dengan fluktuasi tinggi
-    - Tingkatkan koordinasi dengan daerah lain untuk mengurangi disparitas harga
-    """)
-
-# Comparative Analysis (when multiple districts are selected)
-elif len(selected_districts) > 1:
-    st.subheader("Analisis Perbandingan Antar Kabupaten/Kota")
-    
-    # Comparative bar chart for price changes
-    fig_comp = px.bar(filtered_df, x='Kab/Kota', y='Indikator Perubahan Harga (%)', 
-                      title="Perbandingan Perubahan Harga",
-                      color='Indikator Perubahan Harga (%)',
-                      color_continuous_scale=px.colors.diverging.RdBu_r)
-    st.plotly_chart(fig_comp, use_container_width=True)
-    
-    # Comparative analysis of top commodities
-    st.markdown("#### Komoditas Utama per Kabupaten/Kota:")
-    
-    for district in selected_districts:
-        district_data = filtered_df[filtered_df['Kab/Kota'] == district]
-        commodity_list = district_data['Komoditas Andil Perubahan Harga'].iloc[0].split(';')
-        top_commodity = commodity_list[0].split('(')[0].strip()
-        top_value = float(commodity_list[0].split('(')[1].split(')')[0])
-        
-        st.markdown(f"- **{district}**: {top_commodity} (andil {top_value:.4f}%)")
-    
-    # Correlation analysis
-    st.markdown("#### Korelasi Antar Daerah:")
-    
-    # Create a comparison table instead of a correlation matrix
-    st.markdown("""
-    Perbandingan indikator perubahan harga antar daerah:
-    """)
-    
-    comparison_df = filtered_df[['Kab/Kota', 'Indikator Perubahan Harga (%)', 'Disparitas Harga Antar Daerah']]
-    st.dataframe(comparison_df.sort_values('Indikator Perubahan Harga (%)', ascending=False))
-    
-    st.markdown("""
-    Daerah dengan pola perubahan harga serupa mungkin memiliki karakteristik ekonomi atau rantai pasok yang mirip.
-    Pemda dapat berkolaborasi dengan daerah yang memiliki pola serupa untuk mengatasi masalah bersama.
-    """)
+    st.warning("Tidak ada data yang cukup untuk analisis tren.")
 
 # Data table
 st.header("Data Lengkap")
@@ -383,6 +602,14 @@ st.download_button(
     file_name=f"price_data_{'_'.join(selected_districts)}.csv",
     mime="text/csv",
 )
+
+
+
+
+
+
+
+
 
 
 
