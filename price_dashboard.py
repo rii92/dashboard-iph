@@ -137,6 +137,79 @@ fig3 = px.bar(commodity_df, x='Kab/Kota', y='Kontribusi',
               color_continuous_scale=px.colors.diverging.RdBu_r)
 st.plotly_chart(fig3, use_container_width=True)
 
+# Time Series Analysis for Price Trends
+st.header("Analisis Trend Harga")
+
+# Since we only have one time point in the sample data, let's create a note about this
+if len(filtered_df['Tanggal'].unique()) <= 1:
+    st.info("Data saat ini hanya tersedia untuk satu periode waktu (Minggu ke-4 Oktober 2022). Visualisasi trend akan tersedia ketika data dari beberapa periode waktu telah ditambahkan.")
+    
+    # Add a sample visualization with simulated data for demonstration
+    st.subheader("Contoh Visualisasi Trend (Data Simulasi)")
+    
+    # Create sample data for demonstration
+    sample_dates = pd.date_range(start='2022-07-01', end='2022-10-31', freq='W-MON')
+    sample_districts = selected_districts[:3] if len(selected_districts) > 3 else selected_districts
+    
+    sample_data = []
+    for district in sample_districts:
+        base_value = np.random.uniform(0, 5)  # Random starting point
+        trend = np.random.choice([-0.1, 0, 0.1])  # Random trend direction
+        volatility = np.random.uniform(0.2, 1.5)  # Random volatility
+        
+        for date in sample_dates:
+            value = base_value + trend * (date.dayofyear - sample_dates[0].dayofyear)/7
+            value += np.random.normal(0, volatility)  # Add some noise
+            sample_data.append({
+                'Tanggal': date,
+                'Kab/Kota': district,
+                'Indikator Perubahan Harga (%)': value
+            })
+    
+    sample_df = pd.DataFrame(sample_data)
+    
+    # Create time series plot
+    fig_trend = px.line(sample_df, x='Tanggal', y='Indikator Perubahan Harga (%)', 
+                        color='Kab/Kota', markers=True,
+                        title="Simulasi Trend Perubahan Harga per Kabupaten/Kota")
+    fig_trend.update_layout(
+        xaxis_title="Periode Waktu",
+        yaxis_title="Perubahan Harga (%)",
+        legend_title="Kabupaten/Kota"
+    )
+    st.plotly_chart(fig_trend, use_container_width=True)
+    
+    st.caption("Catatan: Visualisasi di atas menggunakan data simulasi untuk tujuan demonstrasi.")
+    
+else:
+    # If we have multiple time points, create actual time series visualization
+    fig_trend = px.line(filtered_df, x='Tanggal', y='Indikator Perubahan Harga (%)', 
+                       color='Kab/Kota', markers=True,
+                       title="Trend Perubahan Harga per Kabupaten/Kota")
+    fig_trend.update_layout(
+        xaxis_title="Periode Waktu",
+        yaxis_title="Perubahan Harga (%)",
+        legend_title="Kabupaten/Kota"
+    )
+    st.plotly_chart(fig_trend, use_container_width=True)
+    
+    # Add trend analysis
+    if len(selected_districts) == 1:
+        district = selected_districts[0]
+        district_data = filtered_df[filtered_df['Kab/Kota'] == district]
+        
+        if len(district_data) > 1:
+            # Calculate trend
+            x = np.array((district_data['Tanggal'] - district_data['Tanggal'].min()).dt.days)
+            y = district_data['Indikator Perubahan Harga (%)'].values
+            slope, intercept = np.polyfit(x, y, 1)
+            
+            trend_direction = "naik" if slope > 0 else "turun"
+            st.markdown(f"**Analisis Trend untuk {district}:**")
+            st.markdown(f"- Trend perubahan harga cenderung **{trend_direction}** selama periode yang ditampilkan.")
+            st.markdown(f"- Rata-rata perubahan: **{district_data['Indikator Perubahan Harga (%)'].mean():.2f}%**")
+            st.markdown(f"- Volatilitas (standar deviasi): **{district_data['Indikator Perubahan Harga (%)'].std():.2f}**")
+
 # Advanced Analysis Section
 st.header("Analisis Mendalam")
 
@@ -256,5 +329,6 @@ st.download_button(
     file_name=f"price_data_{'_'.join(selected_districts)}.csv",
     mime="text/csv",
 )
+
 
 
