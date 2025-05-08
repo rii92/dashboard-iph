@@ -1,83 +1,83 @@
-# Kalimantan Barat Price Analysis Dashboard
+# Dashboard Analisis Harga Kalimantan Barat
 
-## Overview
-This dashboard visualizes and analyzes price changes of essential commodities across districts in West Kalimantan (Kalimantan Barat), Indonesia. It provides insights into price trends, disparities, and the impact of specific commodities on overall price changes.
+## Ikhtisar
+Dashboard ini memvisualisasikan dan menganalisis perubahan harga komoditas penting di berbagai kabupaten/kota di Kalimantan Barat, Indonesia. Dashboard ini memberikan wawasan tentang tren harga, disparitas, dan dampak komoditas tertentu terhadap perubahan harga secara keseluruhan.
 
-## Formulas and Methodologies
+## Rumus dan Metodologi
 
-### 1. Price Change Indicator (Indikator Perubahan Harga)
-The percentage change in prices compared to the previous period:
+### 1. Indikator Perubahan Harga
+Persentase perubahan harga dibandingkan dengan periode sebelumnya:
 
 ```
 Indikator Perubahan Harga (%) = ((P₁ - P₀) / P₀) × 100
 ```
-Where:
-- P₁ = Current period price
-- P₀ = Previous period price
+Dimana:
+- P₁ = Harga periode saat ini
+- P₀ = Harga periode sebelumnya
 
-### 2. Commodity Contribution to Price Change (Andil Komoditas)
-The contribution of a specific commodity to the overall price change:
+### 2. Andil Komoditas
+Kontribusi komoditas tertentu terhadap perubahan harga secara keseluruhan:
 
 ```
 Andil Komoditas = (w × (P₁ - P₀) / P₀) × 100
 ```
-Where:
-- w = Weight of the commodity in the consumption basket
-- P₁ = Current period price of the commodity
-- P₀ = Previous period price of the commodity
+Dimana:
+- w = Bobot komoditas dalam keranjang konsumsi
+- P₁ = Harga komoditas periode saat ini
+- P₀ = Harga komoditas periode sebelumnya
 
-### 3. Price Disparity Between Regions (Disparitas Harga Antar Daerah)
-The relative difference in prices between regions, expressed as a percentage:
+### 3. Disparitas Harga Antar Daerah
+Perbedaan relatif harga antar daerah, dinyatakan dalam persentase:
 
 ```
 Disparitas Harga = (P_max / P_min) × 100
 ```
-Where:
-- P_max = Maximum price of a commodity basket in the region
-- P_min = Minimum price of the same commodity basket in the region
+Dimana:
+- P_max = Harga maksimum keranjang komoditas di daerah
+- P_min = Harga minimum keranjang komoditas yang sama di daerah
 
-A value of 100 indicates no disparity, while values above 100 indicate higher disparity.
+Nilai 100 menunjukkan tidak ada disparitas, sedangkan nilai di atas 100 menunjukkan disparitas yang lebih tinggi.
 
-### 4. Trend Analysis
-For time series with multiple periods, linear regression is used to determine price trends:
+### 4. Analisis Tren
+Untuk deret waktu dengan beberapa periode, regresi linier digunakan untuk menentukan tren harga:
 
 ```
 y = mx + b
 ```
-Where:
-- y = Price change indicator
-- x = Time (in days)
-- m = Slope (trend direction and magnitude)
-- b = Intercept
+Dimana:
+- y = Indikator perubahan harga
+- x = Waktu (dalam hari)
+- m = Kemiringan (arah dan besaran tren)
+- b = Intersep
 
-The trend direction is determined by the sign of the slope (m):
-- Positive slope (m > 0): Upward trend (prices increasing)
-- Negative slope (m < 0): Downward trend (prices decreasing)
+Arah tren ditentukan oleh tanda kemiringan (m):
+- Kemiringan positif (m > 0): Tren naik (harga meningkat)
+- Kemiringan negatif (m < 0): Tren turun (harga menurun)
 
-### 5. Volatility Measurement
-Standard deviation is used to measure price volatility:
+### 5. Pengukuran Volatilitas
+Standar deviasi digunakan untuk mengukur volatilitas harga:
 
 ```
 σ = √(Σ(x - μ)² / n)
 ```
-Where:
-- σ = Standard deviation
-- x = Individual price change values
-- μ = Mean of price changes
-- n = Number of observations
+Dimana:
+- σ = Standar deviasi
+- x = Nilai perubahan harga individual
+- μ = Rata-rata perubahan harga
+- n = Jumlah observasi
 
-## Data Sources
-The dashboard uses price data collected by the Statistics Indonesia (BPS) for West Kalimantan province. The data includes weekly price observations for essential commodities across different districts.
+## Sumber Data
+Dashboard ini menggunakan data harga yang dikumpulkan oleh Badan Pusat Statistik (BPS) untuk provinsi Kalimantan Barat. Data mencakup pengamatan harga mingguan untuk komoditas penting di berbagai kabupaten/kota.
 
-## Technical Implementation
-The dashboard is built using:
-- Streamlit for the web interface
-- Pandas for data manipulation
-- Plotly for interactive visualizations
-- NumPy for numerical calculations
+## Implementasi Teknis
+Dashboard ini dibangun menggunakan:
+- Streamlit untuk antarmuka web
+- Pandas untuk manipulasi data
+- Plotly untuk visualisasi interaktif
+- NumPy untuk perhitungan numerik
 
-## Usage
-1. Select districts using the sidebar filter
-2. Explore different visualizations and analyses
-3. Select specific commodities to analyze their contribution to price changes
-4. Download the filtered data as CSV for further analysis
+## Cara Penggunaan
+1. Pilih kabupaten/kota menggunakan filter di sidebar
+2. Jelajahi berbagai visualisasi dan analisis
+3. Pilih komoditas tertentu untuk menganalisis kontribusinya terhadap perubahan harga
+4. Unduh data yang telah difilter sebagai CSV untuk analisis lebih lanjut
