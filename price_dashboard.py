@@ -12,37 +12,35 @@ st.set_page_config(page_title="Kalimantan Barat Price Analysis", layout="wide", 
 # Load data
 @st.cache_data
 def load_data():
-    data = {
-        'Tahun': [2022, 2022, 2022, 2022, 2022, 2022, 2022, 2022],
-        'Bulan': [10, 10, 10, 10, 10, 10, 10, 10],
-        'Minggu': [4, 4, 4, 4, 4, 4, 4, 4],
-        'No': [6101, 6102, 6103, 6104, 6105, 6106, 6107, 6108],
-        'Provinsi': ['KALIMANTAN BARAT'] * 8,
-        'Kab/Kota': ['SAMBAS', 'BENGKAYANG', 'LANDAK', 'MEMPAWAH', 'SANGGAU', 'KETAPANG', 'SINTANG', 'KAPUAS HULU'],
-        'Indikator Perubahan Harga (%)': [-0.09, 4.44, 10.45, -0.8, 2.37, 4.55, 1.52, 14.07],
-        'Komoditas Andil Perubahan Harga': [
-            'TELUR AYAM RAS (0.4229); BAWANG PUTIH (0.0045); BERAS (0)',
-            'BERAS (3.8698); GULA PASIR (0.3024); MINYAK GORENG (0.0904)',
-            'BERAS (6.0825); MINYAK GORENG (4.9103); DAGING AYAM RAS (0.1072)',
-            'TELUR AYAM RAS (0.0598); BERAS (0); MIE KERING INSTANT (0)',
-            'BERAS (3.2748); MINYAK GORENG (0.9413); GULA PASIR (0.2304)',
-            'BERAS (2.8698); MINYAK GORENG (1.5243); GULA PASIR (0.3689)',
-            'BERAS (3.2748); TELUR AYAM RAS (0.1174); BAWANG MERAH (0.0722)',
-            'BERAS (5.4848); MINYAK GORENG (4.9974); BAWANG MERAH (0.9562)'
-        ],
-        'Fluktuasi Harga Tertinggi': ['CABAI MERAH', 'SUSU BUBUK UNTUK BALITA', 'DAGING AYAM RAS', 'STABIL', 'MIE KERING INSTANT', 'BAWANG PUTIH', 'CABAI RAWIT', 'STABIL'],
-        'Nilai': [0.060, 0.140, 0.040, np.nan, 0.160, 0.070, 0.200, np.nan],
-        'Disparitas Harga Antar Daerah': [120.17, 109.48, 111.99, 107.64, 113.42, 107.89, 102.52, 115.99]
-    }
-    
-    # Create a DataFrame
-    df = pd.DataFrame(data)
-    
-    # Add date column for time series analysis - fixed version
-    df['Tanggal'] = pd.to_datetime(dict(year=df['Tahun'], month=df['Bulan'], day=1))
-    df['Bulan_Nama'] = df['Tanggal'].dt.strftime('%B')
-    
-    return df
+    try:
+        # Load data from CSV file
+        df = pd.read_csv('data.csv')
+        
+        # Check column names and fix if needed
+        if 'Komoditas Andil Perubahan Harga ' in df.columns:
+            # Note the space at the end of the column name
+            df = df.rename(columns={'Komoditas Andil Perubahan Harga ': 'Komoditas Andil Perubahan Harga'})
+        
+        # Handle missing values and convert numeric columns
+        df['Indikator Perubahan Harga (%)'] = pd.to_numeric(df['Indikator Perubahan Harga (%)'], errors='coerce')
+        df['Nilai'] = pd.to_numeric(df['Nilai'], errors='coerce')
+        df['Disparitas Harga Antar Daerah'] = pd.to_numeric(df['Disparitas Harga Antar Daerah'], errors='coerce')
+        
+        # Add date column for time series analysis
+        df['Tanggal'] = pd.to_datetime(dict(year=df['Tahun'], month=df['Bulan'], day=1))
+        df['Bulan_Nama'] = df['Tanggal'].dt.strftime('%B')
+        
+        # Print column names for debugging
+        print("Available columns:", df.columns.tolist())
+        
+        return df
+    except Exception as e:
+        st.error(f"Error loading data: {e}")
+        # Return empty DataFrame with expected columns if file not found
+        return pd.DataFrame(columns=['Tahun', 'Bulan', 'Minggu', 'No', 'Provinsi', 'Kab/Kota', 
+                                    'Indikator Perubahan Harga (%)', 'Komoditas Andil Perubahan Harga',
+                                    'Fluktuasi Harga Tertinggi', 'Nilai', 'Disparitas Harga Antar Daerah',
+                                    'Tanggal', 'Bulan_Nama'])
 
 df = load_data()
 
@@ -65,28 +63,60 @@ else:
 
 # Main content
 st.title("Analisis Perubahan Harga di Kalimantan Barat")
-st.markdown("Dashboard ini menampilkan analisis perubahan harga komoditas di Kalimantan Barat pada Minggu ke-4 Oktober 2022")
+st.markdown("Dashboard ini menampilkan analisis perubahan harga komoditas di Kalimantan Barat")
 
 # Overview metrics
 st.header("Ringkasan")
 col1, col2, col3 = st.columns(3)
 with col1:
-    st.metric("Rata-rata Perubahan Harga", f"{filtered_df['Indikator Perubahan Harga (%)'].mean():.2f}%")
+    # Handle potential NaN values in the mean calculation
+    mean_value = filtered_df['Indikator Perubahan Harga (%)'].mean()
+    if pd.isna(mean_value):
+        st.metric("Rata-rata Perubahan Harga", "Data tidak tersedia")
+    else:
+        st.metric("Rata-rata Perubahan Harga", f"{mean_value:.2f}%")
 with col2:
-    st.metric("Perubahan Harga Tertinggi", f"{filtered_df['Indikator Perubahan Harga (%)'].max():.2f}%", 
-              f"Kabupaten {filtered_df.loc[filtered_df['Indikator Perubahan Harga (%)'].idxmax()]['Kab/Kota']}")
+    # Handle potential NaN values or empty DataFrame
+    if filtered_df.empty or filtered_df['Indikator Perubahan Harga (%)'].isna().all():
+        st.metric("Perubahan Harga Tertinggi", "Data tidak tersedia")
+    else:
+        max_idx = filtered_df['Indikator Perubahan Harga (%)'].idxmax()
+        max_val = filtered_df.loc[max_idx, 'Indikator Perubahan Harga (%)']
+        max_district = filtered_df.loc[max_idx, 'Kab/Kota']
+        st.metric("Perubahan Harga Tertinggi", f"{max_val:.2f}%", f"{max_district}")
 with col3:
-    st.metric("Perubahan Harga Terendah", f"{filtered_df['Indikator Perubahan Harga (%)'].min():.2f}%",
-              f"Kabupaten {filtered_df.loc[filtered_df['Indikator Perubahan Harga (%)'].idxmin()]['Kab/Kota']}")
+    # Handle potential NaN values or empty DataFrame
+    if filtered_df.empty or filtered_df['Indikator Perubahan Harga (%)'].isna().all():
+        st.metric("Perubahan Harga Terendah", "Data tidak tersedia")
+    else:
+        min_idx = filtered_df['Indikator Perubahan Harga (%)'].idxmin()
+        min_val = filtered_df.loc[min_idx, 'Indikator Perubahan Harga (%)']
+        min_district = filtered_df.loc[min_idx, 'Kab/Kota']
+        st.metric("Perubahan Harga Terendah", f"{min_val:.2f}%", f"{min_district}")
 
 # Price change by region
 st.header("Perubahan Harga per Kabupaten/Kota")
-fig = px.bar(filtered_df, x='Kab/Kota', y='Indikator Perubahan Harga (%)', 
-             color='Indikator Perubahan Harga (%)',
-             color_continuous_scale=px.colors.diverging.RdBu_r,
-             labels={'Indikator Perubahan Harga (%)': 'Perubahan Harga (%)'})
-fig.update_layout(xaxis_title="Kabupaten/Kota", yaxis_title="Perubahan Harga (%)")
-st.plotly_chart(fig, use_container_width=True)
+try:
+    # Try using Plotly with json instead of orjson
+    import json
+    import plotly.io as pio
+    
+    # Override the default JSON encoder to avoid orjson
+    pio.json.config.default_engine = 'json'
+    pio.json.config.default_encoder = json.dumps
+    
+    fig = px.bar(filtered_df, x='Kab/Kota', y='Indikator Perubahan Harga (%)', 
+                color='Indikator Perubahan Harga (%)',
+                color_continuous_scale=px.colors.diverging.RdBu_r,
+                labels={'Indikator Perubahan Harga (%)': 'Perubahan Harga (%)'})
+    fig.update_layout(xaxis_title="Kabupaten/Kota", yaxis_title="Perubahan Harga (%)")
+    st.plotly_chart(fig, use_container_width=True)
+except Exception as e:
+    st.error(f"Error creating chart: {e}")
+    st.info("Menggunakan chart alternatif karena masalah dengan Plotly.")
+    
+    # Fallback to simple bar chart using Streamlit
+    st.bar_chart(filtered_df.set_index('Kab/Kota')['Indikator Perubahan Harga (%)'])
 
 # Price disparity analysis
 st.header("Disparitas Harga Antar Daerah")
@@ -98,44 +128,61 @@ st.plotly_chart(fig2, use_container_width=True)
 
 # Commodity contribution analysis
 st.header("Analisis Komoditas Utama")
-# Extract main commodities from the data
-commodities = []
-for item in filtered_df['Komoditas Andil Perubahan Harga']:
-    for commodity in item.split(';'):
-        if '(' in commodity:
-            name = commodity.split('(')[0].strip()
-            if name not in commodities and name:
-                commodities.append(name)
 
-selected_commodity = st.selectbox("Pilih Komoditas", commodities)
+# Check if the column exists
+commodity_column = None
+for col in df.columns:
+    if 'Komoditas Andil' in col:
+        commodity_column = col
+        break
 
-# Create a function to check if a commodity is in the list and extract its value
-def get_commodity_value(commodity_string, target):
-    for item in commodity_string.split(';'):
-        if target in item:
-            try:
-                value = float(item.split('(')[1].split(')')[0])
-                return value
-            except:
+if commodity_column is None:
+    st.error("Kolom 'Komoditas Andil Perubahan Harga' tidak ditemukan dalam data.")
+else:
+    # Extract main commodities from the data
+    commodities = []
+    for item in filtered_df[commodity_column]:
+        if pd.notna(item):  # Check if the value is not NaN
+            for commodity in str(item).split(';'):
+                if '(' in commodity:
+                    name = commodity.split('(')[0].strip()
+                    if name not in commodities and name:
+                        commodities.append(name)
+
+    if commodities:
+        selected_commodity = st.selectbox("Pilih Komoditas", commodities)
+
+        # Create a function to check if a commodity is in the list and extract its value
+        def get_commodity_value(commodity_string, target):
+            if pd.isna(commodity_string):
                 return 0
-    return 0
+            for item in str(commodity_string).split(';'):
+                if target in item:
+                    try:
+                        value = float(item.split('(')[1].split(')')[0])
+                        return value
+                    except:
+                        return 0
+            return 0
 
-# Create a new dataframe with the contribution of the selected commodity
-commodity_data = []
-for _, row in filtered_df.iterrows():
-    value = get_commodity_value(row['Komoditas Andil Perubahan Harga'], selected_commodity)
-    commodity_data.append({
-        'Kab/Kota': row['Kab/Kota'],
-        'Kontribusi': value,
-        'Indikator Perubahan Harga (%)': row['Indikator Perubahan Harga (%)']
-    })
+        # Create a new dataframe with the contribution of the selected commodity
+        commodity_data = []
+        for _, row in filtered_df.iterrows():
+            value = get_commodity_value(row[commodity_column], selected_commodity)
+            commodity_data.append({
+                'Kab/Kota': row['Kab/Kota'],
+                'Kontribusi': value,
+                'Indikator Perubahan Harga (%)': row['Indikator Perubahan Harga (%)']
+            })
 
-commodity_df = pd.DataFrame(commodity_data)
-fig3 = px.bar(commodity_df, x='Kab/Kota', y='Kontribusi',
-              title=f"Kontribusi {selected_commodity} terhadap Perubahan Harga",
-              color='Indikator Perubahan Harga (%)',
-              color_continuous_scale=px.colors.diverging.RdBu_r)
-st.plotly_chart(fig3, use_container_width=True)
+        commodity_df = pd.DataFrame(commodity_data)
+        fig3 = px.bar(commodity_df, x='Kab/Kota', y='Kontribusi',
+                    title=f"Kontribusi {selected_commodity} terhadap Perubahan Harga",
+                    color='Indikator Perubahan Harga (%)',
+                    color_continuous_scale=px.colors.diverging.RdBu_r)
+        st.plotly_chart(fig3, use_container_width=True)
+    else:
+        st.warning("Tidak ada data komoditas yang tersedia.")
 
 # Time Series Analysis for Price Trends
 st.header("Analisis Trend Harga")
@@ -336,7 +383,6 @@ st.download_button(
     file_name=f"price_data_{'_'.join(selected_districts)}.csv",
     mime="text/csv",
 )
-
 
 
 
