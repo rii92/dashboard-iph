@@ -420,54 +420,55 @@ if not filtered_df.empty:
         if trend_view == "Kalimantan Barat (Agregat)":
             # Group by date and calculate average for all districts
             time_series_df = filtered_df.groupby('Tanggal')['Indikator Perubahan Harga (%)'].mean().reset_index()
-            time_series_df['Bulan-Tahun'] = time_series_df['Tanggal'].dt.strftime('%b %Y')
+            time_series_df['Bulan_Tahun'] = time_series_df['Tanggal'].dt.strftime('%b %Y')
+            
+            # Sort by date
+            time_series_df = time_series_df.sort_values('Tanggal')
             
             # Create interactive line chart with Plotly
-            fig = go.Figure()
+            fig = px.line(
+                time_series_df, 
+                x='Tanggal', 
+                y='Indikator Perubahan Harga (%)',
+                markers=True,
+                labels={
+                    'Tanggal': 'Periode',
+                    'Indikator Perubahan Harga (%)': 'Rata-rata Perubahan Harga (%)'
+                },
+                title='Tren Perubahan Harga Kalimantan Barat',
+                custom_data=['Bulan_Tahun']
+            )
             
-            # Add line and markers
-            fig.add_trace(go.Scatter(
-                x=time_series_df['Tanggal'],
-                y=time_series_df['Indikator Perubahan Harga (%)'],
-                mode='lines+markers' + ('+text' if show_values else ''),
-                name='Perubahan Harga',
+            # Update trace
+            fig.update_traces(
                 line=dict(color=solid_colors['positive'], width=4),
                 marker=dict(size=12, color=solid_colors['positive']),
-                text=[f"{y:.2f}%" for y in time_series_df['Indikator Perubahan Harga (%)']] if show_values else None,
-                textposition="top center",
-                textfont=dict(size=12, color='black'),
-                hovertemplate='<b>%{customdata}</b><br>Perubahan: %{y:.2f}%<extra></extra>',
-                customdata=time_series_df['Bulan-Tahun']
-            ))
+                hovertemplate='<b>%{customdata[0]}</b><br>Perubahan: %{y:.2f}%<extra></extra>'
+            )
+            
+            # Add text labels if show_values is True
+            if show_values:
+                fig.update_traces(
+                    text=[f"{y:.2f}%" for y in time_series_df['Indikator Perubahan Harga (%)']],
+                    textposition="top center",
+                    mode='lines+markers+text'
+                )
             
             # Add horizontal line at y=0
-            fig.add_shape(
-                type="line",
-                x0=time_series_df['Tanggal'].min(),
-                y0=0,
-                x1=time_series_df['Tanggal'].max(),
-                y1=0,
-                line=dict(color="gray", width=2, dash="dash")
+            fig.add_hline(
+                y=0,
+                line_dash="dash",
+                line_color="gray",
+                line_width=2
             )
             
             # Update layout
             fig.update_layout(
-                title={
-                    'text': 'Tren Perubahan Harga Kalimantan Barat',
-                    'font': {'size': 24, 'color': 'black', 'family': 'Arial, sans-serif'}
-                },
-                xaxis_title={
-                    'text': 'Periode',
-                    'font': {'size': 16, 'color': 'black', 'family': 'Arial, sans-serif'}
-                },
-                yaxis_title={
-                    'text': 'Rata-rata Perubahan Harga (%)',
-                    'font': {'size': 16, 'color': 'black', 'family': 'Arial, sans-serif'}
-                },
-                xaxis=dict(
-                    tickformat='%b %Y',
-                    tickangle=-45
-                ),
+                font=dict(family="Arial, sans-serif"),
+                title_font=dict(size=24, color='black'),
+                xaxis_title_font=dict(size=16, color='black'),
+                yaxis_title_font=dict(size=16, color='black'),
+                xaxis=dict(tickformat='%b %Y', tickangle=-45),
                 plot_bgcolor='white',
                 height=600,
                 margin=dict(t=100, b=100, l=70, r=40),
@@ -500,67 +501,52 @@ if not filtered_df.empty:
                 # Filter data for selected districts
                 trend_df = filtered_df[filtered_df['Kab/Kota'].isin(districts_for_trend)]
                 
-                # Create interactive line chart with Plotly
-                fig = go.Figure()
+                # Create interactive line chart with Plotly Express
+                fig = px.line(
+                    trend_df.sort_values('Tanggal'), 
+                    x='Tanggal', 
+                    y='Indikator Perubahan Harga (%)',
+                    color='Kab/Kota',
+                    markers=True,
+                    labels={
+                        'Tanggal': 'Periode',
+                        'Indikator Perubahan Harga (%)': 'Perubahan Harga (%)',
+                        'Kab/Kota': 'Kabupaten/Kota'
+                    },
+                    title='Tren Perubahan Harga per Kabupaten/Kota',
+                    custom_data=['Kab/Kota', 'Bulan_Nama', 'Tahun']
+                )
                 
-                # Color palette for multiple lines
-                colors = px.colors.qualitative.Plotly
+                # Update traces
+                fig.update_traces(
+                    line=dict(width=3),
+                    marker=dict(size=10),
+                    hovertemplate='<b>%{customdata[0]}</b><br>Perubahan: %{y:.2f}%<br>%{customdata[1]} %{customdata[2]}<extra></extra>'
+                )
                 
-                # Add lines for each district
-                for i, district in enumerate(districts_for_trend):
-                    district_df = trend_df[trend_df['Kab/Kota'] == district]
-                    
-                    # Sort by date
-                    district_df = district_df.sort_values('Tanggal')
-                    
-                    # Skip if less than 2 data points
-                    if len(district_df) < 2:
-                        continue
-                    
-                    # Add line and markers
-                    fig.add_trace(go.Scatter(
-                        x=district_df['Tanggal'],
-                        y=district_df['Indikator Perubahan Harga (%)'],
-                        mode='lines+markers' + ('+text' if show_values else ''),
-                        name=district,
-                        line=dict(color=colors[i % len(colors)], width=3),
-                        marker=dict(size=10, color=colors[i % len(colors)]),
-                        text=[f"{y:.2f}%" for y in district_df['Indikator Perubahan Harga (%)']] if show_values else None,
+                # Add text labels if show_values is True
+                if show_values:
+                    fig.update_traces(
+                        text=[f"{y:.2f}%" for y in trend_df['Indikator Perubahan Harga (%)']],
                         textposition="top center",
-                        textfont=dict(size=10, color=colors[i % len(colors)]),
-                        hovertemplate='<b>%{text}</b><br>Perubahan: %{y:.2f}%<br>%{customdata}<extra></extra>',
-                        customdata=district_df['Bulan_Nama'] + ' ' + district_df['Tahun'].astype(str),
-                        hovertext=[district] * len(district_df)  # District name for hover
-                    ))
+                        mode='lines+markers+text'
+                    )
                 
                 # Add horizontal line at y=0
-                fig.add_shape(
-                    type="line",
-                    x0=filtered_df['Tanggal'].min(),
-                    y0=0,
-                    x1=filtered_df['Tanggal'].max(),
-                    y1=0,
-                    line=dict(color="gray", width=2, dash="dash")
+                fig.add_hline(
+                    y=0,
+                    line_dash="dash",
+                    line_color="gray",
+                    line_width=2
                 )
                 
                 # Update layout
                 fig.update_layout(
-                    title={
-                        'text': 'Tren Perubahan Harga per Kabupaten/Kota',
-                        'font': {'size': 24, 'color': 'black', 'family': 'Arial, sans-serif'}
-                    },
-                    xaxis_title={
-                        'text': 'Periode',
-                        'font': {'size': 16, 'color': 'black', 'family': 'Arial, sans-serif'}
-                    },
-                    yaxis_title={
-                        'text': 'Perubahan Harga (%)',
-                        'font': {'size': 16, 'color': 'black', 'family': 'Arial, sans-serif'}
-                    },
-                    xaxis=dict(
-                        tickformat='%b %Y',
-                        tickangle=-45
-                    ),
+                    font=dict(family="Arial, sans-serif"),
+                    title_font=dict(size=24, color='black'),
+                    xaxis_title_font=dict(size=16, color='black'),
+                    yaxis_title_font=dict(size=16, color='black'),
+                    xaxis=dict(tickformat='%b %Y', tickangle=-45),
                     plot_bgcolor='white',
                     height=600,
                     margin=dict(t=100, b=100, l=70, r=40),
@@ -602,6 +588,8 @@ st.download_button(
     file_name=f"price_data_{'_'.join(selected_districts)}.csv",
     mime="text/csv",
 )
+
+
 
 
 
